@@ -327,7 +327,7 @@ async function searchPatient() {
   try {
     const data = await healthieQuery(`
       query SearchPatients($q: String) {
-        users(keywords: $q, should_paginate: false, active_status: "Active") {
+        users(keywords: $q, should_paginate: false, active_status: "active") {
           id first_name last_name dob email
           dietitian { id first_name last_name }
         }
@@ -428,7 +428,7 @@ async function loadProviderInfo() {
     document.getElementById('providerFields').classList.remove('hidden');
     if (provider) {
       document.getElementById('providerName').value = `${provider.first_name} ${provider.last_name}`;
-      document.getElementById('providerCredentials').value = provider.credentials || '';
+      document.getElementById('providerCredentials').value = '';
     }
   } catch(e) {
     document.getElementById('providerInfo').textContent = 'Could not load provider. Enter manually below.';
@@ -463,7 +463,7 @@ async function fetchChartData() {
       user(id: $id) {
         id first_name last_name dob
         dietitian { first_name last_name }
-        diagnoses { code description }
+        diagnoses { id icd_code { code description } }
       }
     }
   `, { id: state.patient.id });
@@ -474,7 +474,6 @@ async function fetchChartData() {
       appointments(
         user_id: $user_id
         filter: "all"
-        should_paginate: false
       ) {
         id date pm_status
         appointment_type { name }
@@ -519,7 +518,7 @@ async function generateNarrative(chart) {
   const appts = chart.appointments || [];
   const attended = appts.filter(a => a.pm_status === 'Occurred').length;
   const total = appts.length;
-  const diagnoses = (chart.diagnoses || []).map(d => `${d.code}: ${d.description}`).join(', ');
+  const diagnoses = (chart.diagnoses || []).map(d => d.icd_code ? `${d.icd_code.code}: ${d.icd_code.description}` : '').filter(Boolean).join(', ');
   const recentNotes = (chart.sessionNotes || []).slice(0, 5);
   const notesSummary = recentNotes.map(n => {
     const answers = (n.form_answers || [])
@@ -594,7 +593,7 @@ function renderPreview() {
   const creds = document.getElementById('providerCredentials').value;
   const supervisor = document.getElementById('supervisorName').value;
   const today = new Date().toLocaleDateString('en-US');
-  const diagnoses = (chart?.diagnoses || []).map(d => `${d.code}: ${d.description}`).join('\n') || '';
+  const diagnoses = (chart?.diagnoses || []).map(d => d.icd_code ? `${d.icd_code.code}: ${d.icd_code.description}` : '').filter(Boolean).join('\n') || '';
 
   const sigBlock = `
     <div class="sig-row">
@@ -675,7 +674,7 @@ async function exportPDF() {
   const creds = document.getElementById('providerCredentials').value;
   const supervisor = document.getElementById('supervisorName').value;
   const today = new Date().toLocaleDateString('en-US');
-  const diagnoses = (chart?.diagnoses || []).map(d => `${d.code}: ${d.description}`).join('\n');
+  const diagnoses = (chart?.diagnoses || []).map(d => d.icd_code ? `${d.icd_code.code}: ${d.icd_code.description}` : '').filter(Boolean).join('\n');
   const margin = 60, pageW = 612, contentW = pageW - margin * 2;
   let y = 60;
 
