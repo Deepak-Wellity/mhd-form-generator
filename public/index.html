@@ -420,11 +420,10 @@ async function loadProviderInfo() {
       query GetPatientProviders($id: ID) {
         user(id: $id) {
           dietitian { id first_name last_name }
-          providers { id first_name last_name }
         }
       }
     `, { id: state.patient.id });
-    const provider = data.user?.dietitian || (data.user?.providers || [])[0];
+    const provider = data.user?.dietitian;
     document.getElementById('providerInfo').classList.add('hidden');
     document.getElementById('providerFields').classList.remove('hidden');
     if (provider) {
@@ -458,23 +457,55 @@ async function generateForm() {
 }
 
 async function fetchChartData() {
-  const data = await healthieQuery(`
-    query GetChartData($id: ID) {
+  // Get core patient data
+  const userData = await healthieQuery(`
+    query GetUser($id: ID) {
       user(id: $id) {
-        id first_name last_name dob gender
+        id first_name last_name dob
         dietitian { first_name last_name }
-        providers { first_name last_name }
-        active_care_plan { name goals { name description } }
-        appointments(page_number: 1, per_page: 20) {
-          id date status
-          appointment_type { name }
-          provider { first_name last_name }
-        }
-        diagnoses { code description created_at }
+        diagnoses { code description }
       }
     }
   `, { id: state.patient.id });
-  return data.user;
+
+  // Get appointments separately
+  const apptData = await healthieQuery(`
+    query GetAppointments($user_id: ID) {
+      appointments(
+        user_id: $user_id
+        filter: "all"
+        should_paginate: false
+      ) {
+        id date pm_status
+        appointment_type { name }
+        provider { id full_name }
+      }
+    }
+  `, { user_id: state.patient.id });
+
+  // Get filled out forms (session notes) for this patient
+  const notesData = await healthieQuery(`
+    query GetNotes($user_id: ID) {
+      formAnswerGroups(user_id: $user_id) {
+        id
+        name
+        created_at
+        finished
+        form_answers {
+          label
+          displayed_answer
+        }
+      }
+    }
+  `, { user_id: state.patient.id });
+
+  const sessionNotes = (notesData.formAnswerGroups || []).filter(n => n.finished);
+
+  return {
+    ...userData.user,
+    appointments: apptData.appointments || [],
+    sessionNotes
+  };
 }
 
 async function generateNarrative(chart) {
@@ -486,10 +517,18 @@ async function generateNarrative(chart) {
   const periodFrom = ft === 'progress' ? document.getElementById('periodFrom').value : '';
   const periodTo = ft === 'progress' ? document.getElementById('periodTo').value : '';
   const appts = chart.appointments || [];
-  const attended = appts.filter(a => a.status === 'Occurred').length;
+  const attended = appts.filter(a => a.pm_status === 'Occurred').length;
   const total = appts.length;
   const diagnoses = (chart.diagnoses || []).map(d => `${d.code}: ${d.description}`).join(', ');
-  const goals = (chart.active_care_plan?.goals || []).map(g => g.name).join(', ');
+  const recentNotes = (chart.sessionNotes || []).slice(0, 5);
+  const notesSummary = recentNotes.map(n => {
+    const answers = (n.form_answers || [])
+      .filter(a => a.displayed_answer && a.displayed_answer.trim())
+      .map(a => `${a.label}: ${a.displayed_answer}`)
+      .slice(0, 4)
+      .join(' | ');
+    return `[${n.name || 'Session'} - ${n.created_at ? new Date(n.created_at).toLocaleDateString() : ''}] ${answers}`;
+  }).join('\n');
 
   const prompts = {
     progress: `You are a clinical documentation assistant at Wellity Health, a behavioral health organization. Write a professional Progress Report comment for an Alameda County Mental Health Diversion court filing under PC 1001.36.
@@ -498,7 +537,7 @@ Patient: ${chart.first_name} ${chart.last_name}
 Docket: ${docket}
 Progress Period: ${periodFrom} to ${periodTo}
 Diagnoses: ${diagnoses || 'See chart'}
-Treatment Goals: ${goals || 'Per care plan'}
+Recent Session Notes:\n${notesSummary || 'See chart'}
 Appointments in period: ${total} scheduled, ${attended} attended
 Provider: ${provider}, ${credentials}
 ${supervisor ? `Supervising Clinician: ${supervisor}` : ''}
@@ -518,7 +557,7 @@ Write 2 concise paragraphs: (1) current mental status and clinical presentation,
 
 Patient: ${chart.first_name} ${chart.last_name}
 Diagnoses: ${diagnoses || 'See chart'}
-Treatment Goals: ${goals || 'Per care plan'}
+Recent Session Notes:\n${notesSummary || 'See chart'}
 Provider: ${provider}, ${credentials}
 ${supervisor ? `Supervising Clinician: ${supervisor}` : ''}
 Services: ${getCheckedServices()}
