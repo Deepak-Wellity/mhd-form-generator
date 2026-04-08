@@ -465,7 +465,7 @@ async function fetchChartData() {
         dietitian { first_name last_name }
         providers { first_name last_name }
         active_care_plan { name goals { name description } }
-        appointments(filter: "all", sort_by: "date", order_by: "desc", page_number: 1, per_page: 20) {
+        appointments(page_number: 1, per_page: 20) {
           id date status
           appointment_type { name }
           provider { first_name last_name }
