@@ -971,7 +971,7 @@ async function exportPDF() {
     drawFooter('Mental Health Diversion Eligibility Form', 'last updated 03.12.2025');
   }
 
-  const fname = `MHD_${ft}_${p.last_name}_${p.first_name}_${today.replace(/\//g,'-')}.pdf`;
+  const fname = 'MHD_' + ft + '_' + p.last_name + '_' + p.first_name + '_' + today.replace(/\//g, '-') + '.pdf';
   doc.save(fname);
 }
 
