@@ -329,7 +329,7 @@ async function searchPatient() {
       query SearchPatients($q: String) {
         users(keywords: $q, should_paginate: false, active_status: "Active") {
           id first_name last_name dob email
-          dietitian { id first_name last_name credentials }
+          dietitian { id first_name last_name }
         }
       }
     `, { q });
@@ -419,8 +419,8 @@ async function loadProviderInfo() {
     const data = await healthieQuery(`
       query GetPatientProviders($id: ID) {
         user(id: $id) {
-          dietitian { id first_name last_name credentials }
-          providers { id first_name last_name credentials }
+          dietitian { id first_name last_name }
+          providers { id first_name last_name }
         }
       }
     `, { id: state.patient.id });
@@ -462,13 +462,13 @@ async function fetchChartData() {
     query GetChartData($id: ID) {
       user(id: $id) {
         id first_name last_name dob gender
-        dietitian { first_name last_name credentials }
-        providers { first_name last_name credentials }
+        dietitian { first_name last_name }
+        providers { first_name last_name }
         active_care_plan { name goals { name description } }
         appointments(filter: "all", sort_by: "date", order_by: "desc", page_number: 1, per_page: 20) {
           id date status
           appointment_type { name }
-          provider { first_name last_name credentials }
+          provider { first_name last_name }
         }
         diagnoses { code description created_at }
       }
