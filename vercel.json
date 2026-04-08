@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/api/healthie", "destination": "/api/healthie.js" },
+    { "source": "/api/generate", "destination": "/api/generate.js" },
+    { "source": "/(.*)", "destination": "/public/index.html" }
+  ]
+}
