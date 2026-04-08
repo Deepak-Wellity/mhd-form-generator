@@ -959,8 +959,8 @@ async function exportPDF() {
 
     // Treatment Response
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
-    doc.text('The Participant's Mental Health Symptoms will Likely Respond to Treatment', marginL, y);
-    hLine(marginL, marginL + doc.getTextWidth('The Participant's Mental Health Symptoms will Likely Respond to Treatment'), y + 2, 0.75);
+    doc.text("The Participant's Mental Health Symptoms will Likely Respond to Treatment", marginL, y);
+    hLine(marginL, marginL + doc.getTextWidth("The Participant's Mental Health Symptoms will Likely Respond to Treatment"), y + 2, 0.75);
     y += 20; hLine(marginL, pageW - marginR, y, 0.25); y += 14;
 
     y = pageH - 120;
