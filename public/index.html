@@ -473,7 +473,7 @@ async function fetchChartData() {
     query GetAppointments($user_id: ID) {
       appointments(
         user_id: $user_id
-        filter: "all"
+        with_all_statuses: true
       ) {
         id date pm_status
         appointment_type { name }
@@ -484,8 +484,8 @@ async function fetchChartData() {
 
   // Get filled out forms (session notes) for this patient
   const notesData = await healthieQuery(`
-    query GetNotes($user_id: ID) {
-      formAnswerGroups(user_id: $user_id) {
+    query GetNotes($user_id: String) {
+      formAnswerGroups(user_id: $user_id, use_for_charting: true) {
         id
         name
         created_at
