@@ -675,77 +675,306 @@ async function exportPDF() {
   const supervisor = document.getElementById('supervisorName').value;
   const today = new Date().toLocaleDateString('en-US');
   const diagnoses = (chart?.diagnoses || []).map(d => d.icd_code ? `${d.icd_code.code}: ${d.icd_code.description}` : '').filter(Boolean).join('\n');
-  const margin = 60, pageW = 612, contentW = pageW - margin * 2;
-  let y = 60;
 
-  const titles = { eligibility: 'MENTAL HEALTH DIVERSION ELIGIBILITY FORM', treatment: 'MENTAL HEALTH DIVERSION TREATMENT PLAN', progress: 'MENTAL HEALTH DIVERSION PROGRESS REPORT' };
-  doc.setFontSize(12); doc.setFont('helvetica','bold');
-  doc.text(titles[ft], pageW/2, y, { align: 'center' }); y += 14;
-  doc.setFontSize(9); doc.setFont('helvetica','normal');
-  doc.text('PENAL CODE § 1001.36 · ALAMEDA COUNTY', pageW/2, y, { align: 'center' }); y += 20;
-  doc.setLineWidth(1.5); doc.line(margin, y, pageW-margin, y); y += 16;
+  // Page dimensions
+  const pageW = 612, pageH = 792;
+  const marginL = 54, marginR = 54;
+  const contentW = pageW - marginL - marginR;
+  let y = 0;
 
-  const twoCol = (l1, v1, l2, v2) => {
-    const half = contentW/2;
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text(l1+':', margin, y);
-    doc.setFont('helvetica','normal'); doc.text(v1||'', margin+doc.getTextWidth(l1+': ')+2, y);
-    if (l2) { doc.setFont('helvetica','bold'); doc.text(l2+':', margin+half, y); doc.setFont('helvetica','normal'); doc.text(v2||'', margin+half+doc.getTextWidth(l2+': ')+2, y); }
-    y += 16;
+  // ── HELPERS ──────────────────────────────────────────────────────────
+  const checkPage = (needed = 20) => {
+    if (y + needed > pageH - 54) { doc.addPage(); y = 54; }
   };
-  const fieldRow = (label, value) => {
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text(label+':', margin, y);
-    doc.setFont('helvetica','normal'); doc.text(value||'', margin+doc.getTextWidth(label+': ')+2, y); y += 16;
+
+  const hLine = (x1, x2, yPos, lw = 0.5) => {
+    doc.setLineWidth(lw); doc.line(x1, yPos, x2, yPos);
   };
-  const section = (title) => {
-    y += 8; doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 12;
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text(title.toUpperCase(), margin, y); y += 14;
+
+  const underlineField = (label, value, x, w, yPos) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.text(label, x, yPos);
+    const lw = doc.getTextWidth(label) + 4;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.text(value || '', x + lw, yPos);
+    hLine(x + lw, x + w, yPos + 2);
   };
-  const wrappedText = (text) => {
-    doc.setFont('helvetica','normal'); doc.setFontSize(10);
-    const lines = doc.splitTextToSize(text||'', contentW);
-    if (y + lines.length*14 > 720) { doc.addPage(); y = 60; }
-    doc.text(lines, margin, y); y += lines.length*14+8;
+
+  const twoColUnderline = (l1, v1, l2, v2) => {
+    checkPage(20);
+    const half = contentW / 2;
+    underlineField(l1, v1, marginL, half - 8, y);
+    if (l2) underlineField(l2, v2, marginL + half + 8, half - 8, y);
+    y += 18;
   };
-  const sigBlock = () => {
-    y += 20; const half = contentW/2-20;
+
+  const wrappedText = (text, indent = 0) => {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    const lines = doc.splitTextToSize(text || '', contentW - indent);
+    checkPage(lines.length * 13 + 8);
+    doc.text(lines, marginL + indent, y);
+    y += lines.length * 13 + 6;
+  };
+
+  const checkbox = (checked, x, yPos, size = 7) => {
     doc.setLineWidth(0.5);
-    doc.line(margin, y, margin+half, y); doc.line(margin+half+40, y, pageW-margin, y); y += 12;
-    doc.setFont('helvetica','bold'); doc.setFontSize(8);
-    doc.text('Signature/Credentials', margin, y); doc.text('Date', margin+half+40, y); y += 20;
-    doc.line(margin, y, margin+half, y); doc.line(margin+half+40, y, pageW-margin, y); y += 12;
-    doc.setFont('helvetica','normal'); doc.setFontSize(9);
-    doc.text(`${provider}${supervisor?' (Supervised by: '+supervisor+')':''}`, margin, y);
-    doc.text(`${creds} · Wellity Health`, margin+half+40, y);
+    doc.rect(x, yPos - size + 1, size, size);
+    if (checked) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+      doc.text('X', x + 1.5, yPos - 0.5);
+    }
   };
 
-  twoCol("Participant's Name", `${p.first_name} ${p.last_name}`, 'Date', today);
-  if (ft === 'eligibility') {
-    twoCol('Docket Number', docket, 'Next Court Date', courtDate);
-    section('Limits of Confidentiality'); fieldRow('Participant Informed of Limits', 'Yes'); fieldRow('Agreed to Participate', 'Yes');
-    section('DSM-V Diagnosis(es)'); wrappedText(diagnoses||'See chart');
-    section('Current Mental Status & Diagnostic Rationale'); wrappedText(narrative);
-    section('Treatment Response'); wrappedText("The Participant's mental health symptoms will likely respond to treatment based on the clinical presentation and diagnostic formulation outlined above.");
-  } else if (ft === 'treatment') {
-    twoCol('Docket Number', docket, 'Next Court Date', courtDate);
-    section('Recommended Services'); wrappedText(getCheckedServices());
-    section('Recommended Provider(s)'); wrappedText(`${provider}, ${creds} · Wellity Health${supervisor?'\nSupervising Clinician: '+supervisor:''}`);
-    section('Additional Information'); wrappedText(narrative);
-  } else {
+  const sectionHeader = (title) => {
+    checkPage(24);
+    y += 6;
+    hLine(marginL, pageW - marginR, y, 0.75);
+    y += 13;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text(title, marginL, y);
+    y += 14;
+  };
+
+  const sigBlock = (label1 = 'Signature/Credentials', label2 = 'Date', name = provider, titleAgency = `${creds} · Wellity Health`) => {
+    checkPage(60);
+    y += 16;
+    const col1End = marginL + contentW * 0.55;
+    const col2Start = col1End + 20;
+    hLine(marginL, col1End, y); hLine(col2Start, pageW - marginR, y);
+    y += 11;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    doc.text(label1, marginL, y); doc.text(label2, col2Start, y);
+    y += 18;
+    hLine(marginL, col1End, y); hLine(col2Start, pageW - marginR, y);
+    y += 11;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    const nameStr = supervisor ? `${name} (Supervised by: ${supervisor})` : name;
+    doc.text(nameStr, marginL, y); doc.text(titleAgency, col2Start, y);
+    y += 8;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+    doc.text('Print Name', marginL, y); doc.text('Title/Agency', col2Start, y);
+  };
+
+  // ── HEADER (shared by all forms) ──────────────────────────────────────
+  const drawHeader = (title, subtitle) => {
+    y = 40;
+    // Double top rule
+    hLine(marginL, pageW - marginR, y, 1.5); y += 3;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+
+    // Alameda County seal
+    const sealData = 'data:image/jpeg;base64,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';
+    doc.addImage(sealData, 'JPEG', marginL, y - 2, 40, 40);
+
+    // Title
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.text(title, pageW / 2, y + 8, { align: 'center' });
+    // Underline the title
+    const tw = doc.getTextWidth(title);
+    hLine((pageW - tw) / 2, (pageW + tw) / 2, y + 10, 0.75);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    doc.text(subtitle, pageW / 2, y + 22, { align: 'center' });
+    y += 38;
+
+    // Double bottom rule of header
+    hLine(marginL, pageW - marginR, y, 0.5); y += 3;
+    hLine(marginL, pageW - marginR, y, 1.5); y += 14;
+  };
+
+  // ── FOOTER ────────────────────────────────────────────────────────────
+  const drawFooter = (leftText, rightText) => {
+    const fy = pageH - 28;
+    hLine(marginL, pageW - marginR, fy - 4, 0.5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+    doc.text(leftText, marginL, fy + 6);
+    doc.text(rightText, pageW - marginR, fy + 6, { align: 'right' });
+  };
+
+  // ════════════════════════════════════════════════════════════════════
+  // PROGRESS REPORT
+  // ════════════════════════════════════════════════════════════════════
+  if (ft === 'progress') {
     const periodFrom = document.getElementById('periodFrom').value;
     const periodTo = document.getElementById('periodTo').value;
-    twoCol('Docket Number', docket, 'Next Court Date', courtDate);
-    twoCol('Progress Period', `${periodFrom} to ${periodTo}`, '', '');
-    section('Attorney');
-    twoCol('Name', document.getElementById('attorneyName').value, 'Phone', document.getElementById('attorneyPhone').value);
-    fieldRow('Email', document.getElementById('attorneyEmail').value);
-    section('Provider / Case Manager');
-    fieldRow('Name', `${provider}${supervisor?' (Supervised by: '+supervisor+')':''}`);
-    fieldRow('Title/Credentials', creds);
-    section('Comments Regarding Adherence to Treatment'); wrappedText(narrative);
+    const attorney = document.getElementById('attorneyName').value;
+    const attPhone = document.getElementById('attorneyPhone').value;
+    const attEmail = document.getElementById('attorneyEmail').value;
+
+    drawHeader('MENTAL HEALTH DIVERSION PROGRESS REPORT', 'PENAL CODE § 1001.36');
+
+    // Row 1: Name | Progress Period
+    twoColUnderline("Participant's Name:", `${p.first_name} ${p.last_name}`, 'Progress Period:', `${periodFrom} to ${periodTo}`);
+    // Row 2: Docket | Next Court Date
+    twoColUnderline('Docket Number:', docket, 'Next Court Date:', courtDate);
+    y += 6;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+
+    // Attorney block
+    twoColUnderline('Attorney:', attorney, 'Telephone No:', attPhone);
+    underlineField('Email Address:', attEmail, marginL, contentW, y); y += 18;
+    y += 6;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+
+    // Provider block
+    underlineField('Provider/Case Manager:', `${provider}${supervisor ? ' (Supervised by: ' + supervisor + ')' : ''}`, marginL, contentW, y); y += 18;
+    twoColUnderline('Email Address:', '', 'Telephone No:', '');
+    y += 6;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+
+    // Comments
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.text('Comments regarding adherence to treatment, including whether to modify an existing plan.', marginL, y); y += 13;
+    doc.text('Please be specific:', marginL, y); y += 16;
+    wrappedText(narrative);
+
+    y = pageH - 120;
+    hLine(marginL, pageW - marginR, y, 1.5); y += 3;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+    sigBlock('Signature of Treatment Provider/Case Manager', 'Date', provider, creds);
+
+    drawFooter('Mental Health Diversion Progress Report', 'last updated 01.28.2026');
   }
-  sigBlock();
-  doc.save(`MHD_${ft}_${p.last_name}_${p.first_name}_${today.replace(/\//g,'-')}.pdf`);
+
+  // ════════════════════════════════════════════════════════════════════
+  // TREATMENT PLAN
+  // ════════════════════════════════════════════════════════════════════
+  else if (ft === 'treatment') {
+    drawHeader('MENTAL HEALTH DIVERSION TREATMENT PLAN', 'PENAL CODE § 1001.36');
+
+    twoColUnderline("Participant's Name:", `${p.first_name} ${p.last_name}`, 'Next Court Date:', courtDate);
+    underlineField('Docket Number(s):', docket, marginL, contentW, y); y += 18;
+    y += 6;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.text('Recommended transition/treatment plan (check all that apply):', marginL, y); y += 16;
+
+    const services = {
+      therapy: document.getElementById('chk-therapy')?.checked,
+      psych: document.getElementById('chk-psych')?.checked,
+      sud: document.getElementById('chk-sud')?.checked,
+      cm: document.getElementById('chk-cm')?.checked
+    };
+
+    const serviceBlock = (checked, label, providerLine, additionalText) => {
+      checkPage(55);
+      checkbox(checked, marginL, y);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      doc.text(label, marginL + 12, y); y += 14;
+      underlineField('Recommended provider(s):', providerLine, marginL + 12, contentW - 12, y); y += 16;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      doc.text('Additional Information:', marginL + 12, y); y += 13;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+      if (additionalText) wrappedText(additionalText, 12);
+      else y += 10;
+      hLine(marginL, pageW - marginR, y, 0.25); y += 12;
+    };
+
+    serviceBlock(services.therapy, 'Participate in individual meetings/therapy', `${provider}, ${creds} · Wellity Health`, '');
+    serviceBlock(services.psych, 'Participate in psychiatric services', services.psych ? `${provider}, ${creds} · Wellity Health` : '', '');
+    serviceBlock(services.sud, 'Participate in substance addiction/dependence treatment', services.sud ? `${provider}, ${creds} · Wellity Health` : '', '');
+    serviceBlock(services.cm, 'Engage in case management services', services.cm ? `${provider}, ${creds} · Wellity Health` : '', '');
+
+    checkPage(30);
+    checkbox(false, marginL, y);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.text('Other treatment recommendations:', marginL + 12, y); y += 20;
+    wrappedText(narrative, 12);
+
+    y = pageH - 120;
+    hLine(marginL, pageW - marginR, y, 1.5); y += 3;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+    sigBlock('Signature/Credentials', 'Date', provider, `${creds} · Wellity Health`);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+    doc.text('Print Name', marginL, y + 8); doc.text('Agency', marginL + contentW * 0.6, y + 8);
+
+    drawFooter('Mental Health Diversion Treatment Plan - page 1', 'last updated 8.13.2025');
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // ELIGIBILITY FORM
+  // ════════════════════════════════════════════════════════════════════
+  else {
+    drawHeader('MENTAL HEALTH DIVERSION ELIGIBILITY FORM', 'PENAL CODE § 1001.36');
+
+    twoColUnderline("Participant's Name:", `${p.first_name} ${p.last_name}`, 'Date of Evaluation:', today);
+    twoColUnderline('Docket Number:', docket, 'Next Court Date:', courtDate);
+    y += 6;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+
+    // Limits of confidentiality
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text('Limits of Confidentiality', marginL, y);
+    hLine(marginL, marginL + doc.getTextWidth('Limits of Confidentiality'), y + 2, 0.75);
+    y += 16;
+
+    const yesNoRow = (text, yesChecked) => {
+      checkPage(18);
+      checkbox(yesChecked, marginL, y); doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text('Yes', marginL + 10, y);
+      checkbox(!yesChecked, marginL + 28, y); doc.text('No', marginL + 38, y);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+      doc.text(text, marginL + 52, y); y += 16;
+    };
+
+    yesNoRow('The participant was informed of the purpose of the evaluation and the limits of confidentiality.', true);
+    yesNoRow('The participant agreed to participate in the evaluation.', true);
+    y += 4;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+
+    // Records Reviewed
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text('Records Reviewed', marginL, y);
+    hLine(marginL, marginL + doc.getTextWidth('Records Reviewed'), y + 2, 0.75);
+    y += 20; hLine(marginL, pageW - marginR, y, 0.25); y += 14;
+
+    // Current Mental Status
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text('Current Mental Status', marginL, y);
+    hLine(marginL, marginL + doc.getTextWidth('Current Mental Status'), y + 2, 0.75);
+    y += 16;
+    wrappedText(narrative.split('\n')[0] || narrative);
+    y += 4; hLine(marginL, pageW - marginR, y, 0.25); y += 14;
+
+    // Clinical Interview
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text('Clinical Interview/Assessment(s)', marginL, y);
+    hLine(marginL, marginL + doc.getTextWidth('Clinical Interview/Assessment(s)'), y + 2, 0.75);
+    y += 20; hLine(marginL, pageW - marginR, y, 0.25); y += 14;
+
+    // DSM-V Diagnosis
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text('DSM-V Diagnosis(es)', marginL, y);
+    hLine(marginL, marginL + doc.getTextWidth('DSM-V Diagnosis(es)'), y + 2, 0.75);
+    y += 16;
+    wrappedText(diagnoses || 'See chart');
+    y += 4; hLine(marginL, pageW - marginR, y, 0.25); y += 14;
+
+    // Diagnostic Rationale
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text('Diagnostic Rationale', marginL, y);
+    hLine(marginL, marginL + doc.getTextWidth('Diagnostic Rationale'), y + 2, 0.75);
+    y += 16;
+    wrappedText(narrative);
+    y += 4; hLine(marginL, pageW - marginR, y, 0.25); y += 14;
+
+    // Treatment Response
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text('The Participant's Mental Health Symptoms will Likely Respond to Treatment', marginL, y);
+    hLine(marginL, marginL + doc.getTextWidth('The Participant's Mental Health Symptoms will Likely Respond to Treatment'), y + 2, 0.75);
+    y += 20; hLine(marginL, pageW - marginR, y, 0.25); y += 14;
+
+    y = pageH - 120;
+    hLine(marginL, pageW - marginR, y, 1.5); y += 3;
+    hLine(marginL, pageW - marginR, y, 0.5); y += 14;
+    sigBlock('Signature/Credentials', 'Date', provider, `${creds} · Wellity Health`);
+
+    drawFooter('Mental Health Diversion Eligibility Form', 'last updated 03.12.2025');
+  }
+
+  const fname = `MHD_${ft}_${p.last_name}_${p.first_name}_${today.replace(/\//g,'-')}.pdf`;
+  doc.save(fname);
 }
+
 
 function showStatus(id, type, msg) {
   const el = document.getElementById(id);
